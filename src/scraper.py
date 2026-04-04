@@ -6,6 +6,7 @@ from pdf_exporter import export_page_to_pdf
 from utils import clean_text, make_safe_filename, normalize_url
 import config
 
+
 class NodeHillScraper:
     def __init__(self, logger):
         self.logger = logger
@@ -44,6 +45,9 @@ class NodeHillScraper:
             if not title or not url:
                 continue
 
+            if "/article/" not in url:
+                continue
+
             if "sys9-newton.lms.nodehill.se" not in url:
                 continue
 
@@ -61,23 +65,159 @@ class NodeHillScraper:
     async def get_best_title(self, page: Page, fallback: str) -> str:
         for selector in config.ARTICLE_TITLE_SELECTORS:
             locator = page.locator(selector).first
-            count = await locator.count()
-            if count > 0:
+            if await locator.count() > 0:
                 text = clean_text(await locator.inner_text())
                 if text:
                     return text
         return fallback
 
-    async def prepare_page_for_pdf(self, page: Page) -> None:
-        await page.add_style_tag(
-            content="""
-            @media print {
-                nav, aside, footer {
-                    display: none !important;
+    async def find_article_html(self, page: Page) -> str | None:
+        for selector in config.ARTICLE_CONTENT_SELECTORS:
+            locator = page.locator(selector).first
+            if await locator.count() > 0:
+                html = await locator.inner_html()
+                if html and html.strip():
+                    return html
+        return None
+
+    async def expand_dynamic_content(self, page: Page) -> None:
+        await page.evaluate(
+            """
+            () => {
+                const all = document.querySelectorAll("*");
+
+                for (const el of all) {
+                    const style = window.getComputedStyle(el);
+
+                    const isScrollable =
+                        ["auto", "scroll", "hidden"].includes(style.overflow) ||
+                        ["auto", "scroll", "hidden"].includes(style.overflowX) ||
+                        ["auto", "scroll", "hidden"].includes(style.overflowY);
+
+                    if (isScrollable) {
+                        el.style.overflow = "visible";
+                        el.style.overflowX = "visible";
+                        el.style.overflowY = "visible";
+                        el.style.maxHeight = "none";
+                        el.style.height = "auto";
+                    }
                 }
+
+                document.querySelectorAll("pre, code").forEach(el => {
+                    el.style.whiteSpace = "pre-wrap";
+                    el.style.wordBreak = "break-word";
+                    el.style.overflow = "visible";
+                    el.style.maxHeight = "none";
+                    el.style.height = "auto";
+                });
+
+                document.querySelectorAll("img").forEach(img => {
+                    img.loading = "eager";
+                });
             }
             """
         )
+
+    def build_clean_html(self, title: str, body_html: str, source_url: str) -> str:
+        return f"""
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <title>{title}</title>
+  <style>
+    body {{
+      font-family: Arial, Helvetica, sans-serif;
+      color: #222;
+      margin: 0;
+      padding: 32px;
+      line-height: 1.6;
+      font-size: 15px;
+    }}
+
+    h1, h2, h3, h4 {{
+      line-height: 1.25;
+      margin-top: 1.2em;
+    }}
+
+    img {{
+      max-width: 100%;
+      height: auto;
+    }}
+
+    a {{
+      color: #0a58ca;
+      text-decoration: underline;
+      word-break: break-word;
+    }}
+
+    pre, code {{
+      font-family: Consolas, "Courier New", monospace;
+    }}
+
+    pre {{
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+      border: 1px solid #ddd;
+      background: #f7f7f7;
+      padding: 12px;
+      border-radius: 6px;
+    }}
+
+    code {{
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
+
+    table {{
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: auto;
+    }}
+
+    th, td {{
+      border: 1px solid #ccc;
+      padding: 8px;
+      vertical-align: top;
+      word-break: break-word;
+    }}
+
+    .meta {{
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #666;
+    }}
+
+    .article-root * {{
+      max-height: none !important;
+    }}
+
+    .article-root [style*="overflow"],
+    .article-root [class*="scroll"],
+    .article-root [class*="code"] {{
+      overflow: visible !important;
+      max-height: none !important;
+      height: auto !important;
+    }}
+
+    @page {{
+      size: A4;
+      margin: 15mm 12mm 15mm 12mm;
+    }}
+  </style>
+</head>
+<body>
+  <h1>{title}</h1>
+  <div class="meta">Källa: <a href="{source_url}">{source_url}</a></div>
+  <div class="article-root">
+    {body_html}
+  </div>
+</body>
+</html>
+"""
 
     async def export_article(
         self,
@@ -96,18 +236,31 @@ class NodeHillScraper:
                 wait_until="networkidle",
                 timeout=config.NAVIGATION_TIMEOUT_MS,
             )
-
             await page.wait_for_timeout(config.WAIT_AFTER_LOAD_MS)
 
+            await self.expand_dynamic_content(page)
+
             title = await self.get_best_title(page, article.title)
+            article_html = await self.find_article_html(page)
+
+            if not article_html:
+                raise RuntimeError("Kunde inte hitta artikelinnehåll på sidan.")
+
+            clean_html = self.build_clean_html(title, article_html, article.url)
+
+            pdf_page = await context.new_page()
+            await pdf_page.set_content(clean_html, wait_until="load")
+            await pdf_page.wait_for_timeout(1000)
+
             safe_title = make_safe_filename(title)
             file_name = f"{index:03d}_{safe_title}.pdf"
             pdf_path = output_dir / file_name
 
-            await self.prepare_page_for_pdf(page)
-            await export_page_to_pdf(page, pdf_path)
+            await export_page_to_pdf(pdf_page, pdf_path)
 
-            self.logger.info("Sparade PDF: %s", pdf_path)
+            await pdf_page.close()
+
+            self.logger.info("Sparade ren PDF: %s", pdf_path)
 
             return ExportResult(
                 title=title,
@@ -134,7 +287,7 @@ class NodeHillScraper:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         context = await browser.new_context(
-            viewport={"width": 1600, "height": 1200}
+            viewport={"width": 1600, "height": 1400}
         )
 
         start_page = await context.new_page()

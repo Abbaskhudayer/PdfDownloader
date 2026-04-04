@@ -14,11 +14,17 @@ WAIT_AFTER_LOAD_MS = 1500
 PDF_FORMAT = "A4"
 PDF_PRINT_BACKGROUND = True
 
-# Justeras senare när du har inspekterat sidan
-ARTICLE_CARD_SELECTOR = "a"
+ARTICLE_CARD_SELECTOR = "main a[href*='/article/']"
 ARTICLE_TITLE_SELECTORS = [
-    "h1",
     "main h1",
     "article h1",
-    "[role='main'] h1"
+    "[role='main'] h1",
+    "h1"
+]
+
+ARTICLE_CONTENT_SELECTORS = [
+    "main article",
+    "article",
+    "[role='main'] article",
+    "main",
 ]
