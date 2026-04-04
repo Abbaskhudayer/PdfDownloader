@@ -14,17 +14,15 @@ WAIT_AFTER_LOAD_MS = 1500
 PDF_FORMAT = "A4"
 PDF_PRINT_BACKGROUND = True
 
-ARTICLE_CARD_SELECTOR = "main a[href*='/article/']"
-ARTICLE_TITLE_SELECTORS = [
-    "main h1",
-    "article h1",
-    "[role='main'] h1",
-    "h1"
-]
+# Samla fortfarande artikellänkar från startsidan
+ARTICLE_CARD_SELECTOR = "a"
 
-ARTICLE_CONTENT_SELECTORS = [
-    "main article",
-    "article",
-    "[role='main'] article",
-    "main",
+# NodeHill-selectors vi hittade i DevTools
+ARTICLE_CONTAINER_SELECTOR = ".article-page.main-content-anim"
+ARTICLE_TITLE_SELECTOR = "#article-title-text"
+ARTICLE_BODY_SELECTOR = "#markdown-text"
+
+REMOVE_SELECTORS = [
+    ".prev-next-links",
+    ".favorites-button",
 ]
