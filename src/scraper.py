@@ -52,11 +52,15 @@ class NodeHillScraper:
 
             normalized = normalize_url(url)
 
+            # Ta bara riktiga artikelsidor
+            if "/article/" not in normalized:
+                continue
+
             if normalized in self.seen_urls:
                 continue
 
             self.seen_urls.add(normalized)
-            articles.append(ArticleLink(title=title, url=url))
+            articles.append(ArticleLink(title=title, url=normalized))
 
         self.logger.info("Antal hittade unika artikellankar: %s", len(articles))
         return articles
@@ -83,15 +87,138 @@ class NodeHillScraper:
             (element) => {
                 const clone = element.cloneNode(true);
 
-                // Ta bort oönskade saker inuti artikeln om de finns
                 const selectorsToRemove = [
                     ".prev-next-links",
-                    ".favorites-button"
+                    ".favorites-button",
+                    "button",
+                    "[role='button']",
+                    ".copy-button",
+                    ".copy-btn",
+                    ".clipboard-button",
+                    ".code-copy",
+                    ".toolbar",
+                    ".code-toolbar",
+                    ".v-btn",
+                    ".material-icons",
+                    ".line-numbers-rows",
+                    ".line-numbers",
+                    ".line-number",
+                    "[class*='line-number']",
+                    "[class*='linenumber']",
+                    "[data-line-number]",
+                    "[aria-label='Copy code']"
                 ];
 
                 for (const selector of selectorsToRemove) {
                     clone.querySelectorAll(selector).forEach(node => node.remove());
                 }
+
+                // Ta bort element som bara visar copy-ikon/text
+                clone.querySelectorAll("*").forEach(node => {
+                    const text = (node.textContent || "").trim();
+                    const childCount = node.children ? node.children.length : 0;
+
+                    if (
+                        childCount === 0 &&
+                        (
+                            text === "content_copy" ||
+                            text === "copy" ||
+                            text === "Copy"
+                        )
+                    ) {
+                        node.remove();
+                    }
+                });
+
+                function normalizeLineEndings(value) {
+                    return (value || "").replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n");
+                }
+
+                function trimOuterBlankLines(value) {
+                    return value.replace(/^\\n+|\\n+$/g, "");
+                }
+
+                function stripSharedIndentation(value) {
+                    const lines = value.split("\\n");
+                    const nonEmptyLines = lines.filter(line => line.trim().length > 0);
+
+                    if (nonEmptyLines.length === 0) {
+                        return value;
+                    }
+
+                    const indents = nonEmptyLines.map(line => {
+                        const match = line.match(/^\\s*/);
+                        return match ? match[0].length : 0;
+                    });
+
+                    const minIndent = Math.min(...indents);
+
+                    if (minIndent <= 0) {
+                        return value;
+                    }
+
+                    return lines
+                        .map(line => {
+                            if (line.trim().length === 0) {
+                                return "";
+                            }
+
+                            return line.slice(minIndent);
+                        })
+                        .join("\\n");
+                }
+
+                function everyNonEmptyLineStartsWithNumber(value) {
+                    const lines = value.split("\\n").filter(line => line.trim().length > 0);
+
+                    if (lines.length === 0) {
+                        return false;
+                    }
+
+                    return lines.every(line => /^\\s*\\d+/.test(line));
+                }
+
+                function stripLeadingLineNumbers(value) {
+                    return value
+                        .split("\\n")
+                        .map(line => line.replace(/^(\\s*)\\d+/, "$1"))
+                        .join("\\n");
+                }
+
+                function cleanCodeText(value) {
+                    let text = normalizeLineEndings(value);
+                    text = trimOuterBlankLines(text);
+
+                    if (everyNonEmptyLineStartsWithNumber(text)) {
+                        text = stripLeadingLineNumbers(text);
+                    }
+
+                    text = trimOuterBlankLines(text);
+                    text = stripSharedIndentation(text);
+
+                    return text;
+                }
+
+                // Gör om kodblock till ren textbaserad HTML så copy/paste blir bättre
+                clone.querySelectorAll("pre").forEach(pre => {
+                    const text = cleanCodeText(pre.innerText || pre.textContent || "");
+
+                    const newPre = document.createElement("pre");
+                    const newCode = document.createElement("code");
+                    newCode.textContent = text;
+
+                    newPre.appendChild(newCode);
+                    pre.replaceWith(newPre);
+                });
+
+                // Inline code utan pre runt sig
+                clone.querySelectorAll("code").forEach(code => {
+                    if (code.closest("pre")) {
+                        return;
+                    }
+
+                    code.textContent = normalizeLineEndings(code.innerText || code.textContent || "");
+                });
 
                 // Gör länkar absoluta
                 clone.querySelectorAll("a[href]").forEach(a => {
@@ -107,16 +234,17 @@ class NodeHillScraper:
                     } catch (_) {}
                 });
 
-                // Ta bort ankarlänkar av typen <a name="..."></a> om de är tomma
+                // Ta bort tomma ankare
                 clone.querySelectorAll("a[name]").forEach(a => {
                     const hasVisibleContent = (a.textContent || "").trim().length > 0;
                     const hasHref = a.hasAttribute("href");
+
                     if (!hasVisibleContent && !hasHref) {
                         a.remove();
                     }
                 });
 
-                // Försök veckla ut scrollbara kodrutor / block
+                // Försök veckla ut scrollbara block
                 clone.querySelectorAll("*").forEach(node => {
                     const style = node.getAttribute("style") || "";
 
@@ -134,8 +262,6 @@ class NodeHillScraper:
                 });
 
                 clone.querySelectorAll("pre, code").forEach(node => {
-                    node.style.whiteSpace = "pre-wrap";
-                    node.style.wordBreak = "break-word";
                     node.style.overflow = "visible";
                     node.style.maxHeight = "none";
                     node.style.height = "auto";
