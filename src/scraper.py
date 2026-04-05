@@ -15,7 +15,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
         self.seen_urls: set[str] = set()  # Skapar en mängd för att hålla reda på besökta URL:er
 
     async def open_start_page(self, page: Page) -> None:  # Asynkron metod för att öppna startsidan
-        self.logger.info("Oppnar startsidan: %s", config.BASE_URL)  # Loggar att startsidan öppnas
+        self.logger.info("Öppnar startsidan: %s", config.BASE_URL)  # Loggar att startsidan öppnas
 
         await page.goto(  # Navigerar till bas-URL:en
             config.BASE_URL,  # URL från konfigurationsfilen
@@ -26,7 +26,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
         await page.wait_for_timeout(config.WAIT_AFTER_LOAD_MS)  # Väntar extra tid efter laddning
 
     async def collect_article_links(self, page: Page) -> List[ArticleLink]:  # Asynkron metod för att samla in artikellänkar
-        self.logger.info("Samlar artikellankar...")  # Loggar att insamlingen börjar
+        self.logger.info("Samlar artikellänkar...")  # Loggar att insamlingen börjar
 
         raw_links = await page.eval_on_selector_all(  # Kör JavaScript för att hämta alla artikellänkar
             config.ARTICLE_CARD_SELECTOR,  # CSS-selektor för artikelkort
@@ -62,7 +62,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
             self.seen_urls.add(normalized)  # Lägger till URL:en i mängden av besökta URL:er
             articles.append(ArticleLink(title=title, url=normalized))  # Lägger till artikeln i listan
 
-        self.logger.info("Antal hittade unika artikellankar: %s", len(articles))  # Loggar antalet hittade artiklar
+        self.logger.info("Antal hittade unika artikellänkar: %s", len(articles))  # Loggar antalet hittade artiklar
         return articles  # Returnerar listan med artiklar
 
     async def get_best_title(self, page: Page, fallback: str) -> str:  # Asynkron metod för att hämta bästa möjliga titel
@@ -78,7 +78,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
         body_locator = page.locator(config.ARTICLE_BODY_SELECTOR).first  # Skapar en locator för artikelns innehåll
         if await body_locator.count() == 0:  # Kontrollerar att innehållselementet finns
             raise ValueError(  # Kastar ett fel om elementet saknas
-                f"Kunde inte hitta artikelinnehall med selector: {config.ARTICLE_BODY_SELECTOR}"  # Felmeddelande med selektor
+                f"Kunde inte hitta artikelinnehåll med selector: {config.ARTICLE_BODY_SELECTOR}"  # Felmeddelande med selektor
             )
 
         body_html = await page.eval_on_selector(  # Kör JavaScript för att extrahera och rensa artikelns HTML
@@ -287,7 +287,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
         source_page = await context.new_page()  # Skapar en ny sida för att läsa artikeln
 
         try:  # Försöker exportera artikeln
-            self.logger.info("Oppnar artikel %s: %s", index, article.url)  # Loggar att artikeln öppnas
+            self.logger.info("Öppnar artikel %s: %s", index, article.url)  # Loggar att artikeln öppnas
 
             await source_page.goto(  # Navigerar till artikelns URL
                 article.url,  # Artikelns URL
@@ -355,7 +355,7 @@ class NodeHillScraper:  # Definierar skrarparklass för NodeHill-webbplatsen
         start_page = await context.new_page()  # Skapar startsidan
         await self.open_start_page(start_page)  # Öppnar och laddar startsidan
 
-        input("Nar sidan ar helt laddad, tryck Enter for att fortsatta...")  # Väntar på att användaren trycker Enter
+        input("När sidan är helt laddad, tryck Enter för att fortsätta...")  # Väntar på att användaren trycker Enter
 
         articles = await self.collect_article_links(start_page)  # Samlar in alla artikellänkar från startsidan
 
