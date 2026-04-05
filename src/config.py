@@ -14,11 +14,15 @@ WAIT_AFTER_LOAD_MS = 1500
 PDF_FORMAT = "A4"
 PDF_PRINT_BACKGROUND = True
 
-# Justeras senare när du har inspekterat sidan
+# Samla fortfarande artikellänkar från startsidan
 ARTICLE_CARD_SELECTOR = "a"
-ARTICLE_TITLE_SELECTORS = [
-    "h1",
-    "main h1",
-    "article h1",
-    "[role='main'] h1"
+
+# NodeHill-selectors vi hittade i DevTools
+ARTICLE_CONTAINER_SELECTOR = ".article-page.main-content-anim"
+ARTICLE_TITLE_SELECTOR = "#article-title-text"
+ARTICLE_BODY_SELECTOR = "#markdown-text"
+
+REMOVE_SELECTORS = [
+    ".prev-next-links",
+    ".favorites-button",
 ]
